@@ -1,46 +1,52 @@
 package org.openpnp.machine.reference;
 
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
+import org.openpnp.model.BoardLocation;
+import org.openpnp.model.Configuration;
 import org.openpnp.model.Job;
+import org.openpnp.model.Location;
+import org.openpnp.model.Part;
+import org.openpnp.model.Placement;
+import org.openpnp.spi.Feeder;
+import org.openpnp.spi.Head;
+import org.openpnp.spi.Machine;
+import org.openpnp.spi.Nozzle;
+import org.openpnp.spi.PartAlignment;
 import org.openpnp.spi.PnpJobProcessor.JobPlacement.Status;
 import org.openpnp.spi.base.AbstractPnpJobProcessor;
+import org.simpleframework.xml.Attribute;
 
 /**
- * Status: Originally had the idea of next() throwing an exception with RecoveryOptions, then
- * next would attempt to do the same task and pass the recovery option. Then I thought that
- * everything could be a command, including the recovery options, but then we might need
- * commands as specific as SkipPlacementForPick since we need to set status related to the
- * current command.
- * 
- * But now I am thinking maybe not. 
- *
- * Each command would be responsible for setting nextCommand when it finishes successfully. Otherwise
- * it's just gonna get called again. Before it does, maybe a command is called that changes the
- * state of the job, so each command should check if it needs to run. If not, just drop through.
- * 
- * *****Is this really very different then the FSM?
- *      For one thing, it allows multiple recovery options.
- *      
- * Note: We always need to be able to Pause and Abort, so I do think Abort needs to be
- * interface level and not a command.      
- * 
- * Note: Most of the reponse commands will need to be classes so we can create them with required
- * state.
- *  
- * Note: When we get to the ability to specify a recovery option on a JobPlacement, it should be
- * Continue, not Skip, indicating that the command will do whatever it can to continue, including
- * skipping if required.
- * 
- * PreFlight
- * FiducialCheck
- * Plan
- *  
+ * TODO STOPSHIP: For the "don't bother me" option, we could either use a default command
+ * or just mark the placement skipped and store the error. I think the latter. Errors unrelated
+ * to a placement will still prompt, but those are early in the process. 
  */
 public class ReferencePnpJobProcessor2 extends AbstractPnpJobProcessor {
     protected Job job;
     protected JobProcessorCommand nextCommand;
-    
+
+    @Attribute(required = false)
+    protected boolean parkWhenComplete = false;
+
+    protected Machine machine;
+
+    protected Head head;
+
+    protected List<JobPlacement> jobPlacements = new ArrayList<>();
+
+    protected List<PlannedPlacement> plannedPlacements = new ArrayList<>();
+
+    protected Map<BoardLocation, Location> boardLocationFiducialOverrides = new HashMap<>();
+
+    long startTime;
+    int totalPartsPlaced;
+
+
     @Override
     public void initialize(Job job) throws Exception {
         if (this.job != null) {
@@ -52,12 +58,12 @@ public class ReferencePnpJobProcessor2 extends AbstractPnpJobProcessor {
     }
 
     @Override
-    public boolean next() throws JobProcessorException {
+    public boolean next() throws Exception {
         return next(null);
     }
 
     @Override
-    public boolean next(JobProcessorCommand command) throws JobProcessorException {
+    public boolean next(JobProcessorCommand command) throws Exception {
         if (command == null) {
             if (nextCommand == null) {
                 return false;
@@ -69,81 +75,211 @@ public class ReferencePnpJobProcessor2 extends AbstractPnpJobProcessor {
         }
         return true;
     }
-    
+
     @Override
     public void abort() throws Exception {
         AbortJob.execute();
     }
 
-    @Override
-    public List<JobPlacement> getJobPlacementsById(String id) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public List<JobPlacement> getJobPlacementsById(String id, Status status) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-    
     final JobProcessorCommand PreFlight = new Command() {
-        public void execute() throws JobProcessorException {
+        public void execute() throws Exception {
+            startTime = System.currentTimeMillis();
+            totalPartsPlaced = 0;
+
+            // Create some shortcuts for things that won't change during the run
+            machine = Configuration.get().getMachine();
+            head = machine.getDefaultHead();
+            
+            jobPlacements.clear();
+            boardLocationFiducialOverrides.clear();
+
+            fireTextStatus("Checking job for setup errors.");
+
+            for (BoardLocation boardLocation : job.getBoardLocations()) {
+                // Only check enabled boards
+                if (!boardLocation.isEnabled()) {
+                    continue;
+                }
+                for (Placement placement : boardLocation.getBoard().getPlacements()) {
+                    // Ignore placements that aren't set to be placed
+                    if (placement.getType() != Placement.Type.Place) {
+                        continue;
+                    }
+
+                    // Ignore placements that aren't on the side of the board we're processing.
+                    if (placement.getSide() != boardLocation.getSide()) {
+                        continue;
+                    }
+
+                    // TODO STOPSHIP: Needs to come from pre-made list or setting it to skip
+                    // doesn't work
+                    // TODO STOPSHIP: Something to think about: If a user can enable/disable parts
+                    // and boards and anything else, the jobplacement list will become out of
+                    // date.
+                    JobPlacement jobPlacement = new JobPlacement(boardLocation, placement);
+
+                    try {
+                        // Make sure the part is not null
+                        if (placement.getPart() == null) {
+                            throw new Exception(
+                                    String.format("Part not found for board %s, placement %s.",
+                                            boardLocation.getBoard().getName(), placement.getId()));
+                        }
+
+                        // Verify that the part height is greater than zero. Catches a common
+                        // configuration
+                        // error.
+                        if (placement.getPart().getHeight().getValue() <= 0D) {
+                            throw new Exception(
+                                    String.format("Part height for %s must be greater than 0.",
+                                            placement.getPart().getId()));
+                        }
+                    }
+                    catch (Exception e) {
+                        throw new JobProcessorException(e, new SkipPlacement(jobPlacement));
+                    }
+
+                    try {
+                        // Make sure there is at least one compatible nozzle tip available
+                        findNozzleTip(head, placement.getPart());
+
+                        // Make sure there is at least one compatible and enabled feeder available
+                        findFeeder(machine, placement.getPart());
+                    }
+                    catch (Exception e) {
+                        throw new JobProcessorException(e, new SkipPart(placement.getPart()));
+                    }
+
+                    jobPlacements.add(jobPlacement);
+                }
+            }
+
+            // Everything looks good, so prepare the machine.
+            fireTextStatus("Preparing machine.");
+
+            // Safe Z the machine
+            head.moveToSafeZ();
+            // Discard any currently picked parts
+            discardAll(head);
+            
             nextCommand = FiducialCheck;
         }
     };
-    
+
     final JobProcessorCommand FiducialCheck = new Command() {
         public void execute() throws JobProcessorException {
             // if fail, create new DisableBoard command, passing the board so that execute
             // can disable it. don't set nextComand so this gets called again, and make
             // sure to check which boards are enabled so we process them right.
-            nextCommand = Plan;
+            nextCommand = null;
         }
     };
-    
+
     final JobProcessorCommand Plan = new Command() {
         public void execute() throws JobProcessorException {
-            
+
         }
     };
-    
+
     final JobProcessorCommand SkipBoardFiducialCheck = new Command("Skip Fiducial Check", "") {
         public void execute() throws JobProcessorException {
             // set board check fids = false
         }
     };
-    
-    final JobProcessorCommand DisableBoard = new Command("Disable Board", "Disable the currently processing board so it is not processed any further.") {
+
+    final JobProcessorCommand DisableBoard = new Command("Disable Board",
+            "Disable the currently processing board so it is not processed any further.") {
         public void execute() throws JobProcessorException {
             // set boardlocation.enabled = false
         }
     };
-    
-    final JobProcessorCommand AbortJob = new Command("Abort Job", "Abort the currently running job and perform the cleanup routine.") {
-        public void execute() throws JobProcessorException {
-        }
+
+    final JobProcessorCommand AbortJob = new Command("Abort Job",
+            "Abort the currently running job and perform the cleanup routine.") {
+        public void execute() throws JobProcessorException {}
     };
     
+    class SkipPlacement extends Command {
+        final JobPlacement jobPlacement;
+        
+        public SkipPlacement(JobPlacement jobPlacement) {
+            super("Skip Placement", "Skip the current placement.");
+            this.jobPlacement = jobPlacement;
+        }
+        
+        public void execute() throws JobProcessorException {
+            jobPlacement.status = JobPlacement.Status.Skipped;
+            // TODO: Likely need to remove the PlannedPlacement, if any.
+        }
+    }
+
+    class SkipPart extends Command {
+        final Part part;
+        
+        public SkipPart(Part part) {
+            super("Skip Part", "Skip the current part .");
+            this.part = part;
+        }
+        
+        public void execute() throws JobProcessorException {
+            // TODO: What does it do?
+//            jobPlacement.status = JobPlacement.Status.Skipped;
+            // TODO: Likely need to remove the PlannedPlacement, if any.
+        }
+    }
+
+    public List<JobPlacement> getJobPlacementsById(String id) {
+        return jobPlacements.stream().filter((jobPlacement) -> {
+            return jobPlacement.toString() == id;
+        }).collect(Collectors.toList());
+    }
+
+    public List<JobPlacement> getJobPlacementsById(String id, Status status) {
+        return jobPlacements.stream().filter((jobPlacement) -> {
+            return jobPlacement.toString() == id && jobPlacement.status == status;
+        }).collect(Collectors.toList());
+    }
+
     abstract class Command implements JobProcessorCommand {
         final String name;
         final String description;
-        
+
         public Command() {
             this(null, null);
         }
-        
+
         public Command(String name, String description) {
             this.name = name;
             this.description = description;
         }
-        
+
         public String getName() {
             return name;
         }
-        
+
         public String getDescription() {
             return description;
         }
     }
+    
+    public static class PlannedPlacement {
+        public final JobPlacement jobPlacement;
+        public final Nozzle nozzle;
+        public Feeder feeder;
+        public PartAlignment.PartAlignmentOffset alignmentOffsets;
+        public boolean fed;
+        public boolean stepComplete;
+
+        public PlannedPlacement(Nozzle nozzle, JobPlacement jobPlacement) {
+            this.nozzle = nozzle;
+            this.jobPlacement = jobPlacement;
+        }
+
+        @Override
+        public String toString() {
+            return nozzle + " -> " + jobPlacement.toString();
+        }
+    }
+
+    
 }

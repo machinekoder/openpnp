@@ -70,7 +70,7 @@ public class ReferenceMachine extends AbstractMachine {
     private ReferenceDriver driver = new NullDriver();
 
     @Element(required = false)
-    protected PnpJobProcessor pnpJobProcessor = new ReferencePnpJobProcessor();
+    protected PnpJobProcessor pnpJobProcessor = new ReferencePnpJobProcessor2();
 
     @Element(required = false)
     protected PasteDispenseJobProcessor pasteDispenseJobProcessor;

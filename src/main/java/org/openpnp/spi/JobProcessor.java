@@ -8,18 +8,20 @@ public interface JobProcessor extends PropertySheetHolder, WizardConfigurable {
     /**
      * Shortcut for next(null).
      * @return
-     * @throws JobProcessorException
+     * @throws Exception: Note that a JobProcessorException can be thrown instead, which can
+     * include Commands to help resolve the problem.
      */
-    boolean next() throws JobProcessorException;
+    boolean next() throws Exception;
     
     /**
      * Performs the given command. If the command is null the processor will perform
      * the next logical command given the state of the processor.
      * @param command
      * @return
-     * @throws JobProcessorException
+     * @throws Exception: Note that a JobProcessorException can be thrown instead, which can
+     * include Commands to help resolve the problem.
      */
-    boolean next(JobProcessorCommand command) throws JobProcessorException;
+    boolean next(JobProcessorCommand command) throws Exception;
     
     void abort() throws Exception;
     
@@ -30,19 +32,24 @@ public interface JobProcessor extends PropertySheetHolder, WizardConfigurable {
     public interface JobProcessorCommand {
         String getName(); // Skip Placement, Skip Board
         String getDescription(); // Skip the current placement, Skip all placements on the current board.
-        void execute() throws JobProcessorException;
+        void execute() throws Exception;
     }
     
     public class JobProcessorException extends Exception {
         protected final JobProcessorCommand[] commands;
         
-        public JobProcessorException(JobProcessorCommand[] commands, Exception cause) {
+        public JobProcessorException(Exception cause, JobProcessorCommand... commands) {
             super(cause);
             this.commands = commands;
         }
         
         public JobProcessorCommand[] getCommands() {
             return commands;
+        }
+
+        @Override
+        public String getMessage() {
+            return getCause().getMessage();
         }
     }
     

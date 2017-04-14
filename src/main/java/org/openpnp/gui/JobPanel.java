@@ -85,6 +85,8 @@ import org.openpnp.model.Placement;
 import org.openpnp.spi.Camera;
 import org.openpnp.spi.HeadMountable;
 import org.openpnp.spi.JobProcessor;
+import org.openpnp.spi.JobProcessor.JobProcessorCommand;
+import org.openpnp.spi.JobProcessor.JobProcessorException;
 import org.openpnp.spi.JobProcessor.TextStatusListener;
 import org.openpnp.spi.Machine;
 import org.openpnp.spi.MachineListener;
@@ -817,32 +819,21 @@ public class JobPanel extends JPanel {
 
         }, (t) -> {
             List<String> options = new ArrayList<>();
-            String retryOption = "Try Again";
-            String skipOption = "Skip";
             String pauseOption = "Pause Job";
 
-            options.add(retryOption);
-            if (jobProcessor.canSkip()) {
-                options.add(skipOption);
-            }
             options.add(pauseOption);
+            if (t instanceof JobProcessorException) {
+                for (JobProcessorCommand command : ((JobProcessorException) t).getCommands()) {
+                    options.add(command.getName());
+                    // TODO: add description tooltip. will need custom buttons for that.
+                }
+            }
             int result = JOptionPane.showOptionDialog(getTopLevelAncestor(), t.getMessage(),
                     "Job Error", JOptionPane.YES_NO_CANCEL_OPTION, JOptionPane.ERROR_MESSAGE, null,
-                    options.toArray(), retryOption);
+                    options.toArray(), "wat");
             String selectedOption = options.get(result);
-            if (selectedOption.equals(retryOption)) {
-                jobRun();
-            }
-            // Skip
-            else if (selectedOption.equals(skipOption)) {
-                UiUtils.messageBoxOnException(() -> {
-                    // Tell the job processor to skip the current placement and then call jobRun()
-                    // to start things back up, either running or stepping.
-                    jobSkip();
-                });
-            }
-            // Pause or cancel dialog
-            else {
+            // check for commands and run it, or whatever, then call next
+            if (selectedOption.equals(pauseOption)) {
                 // We are either Running or Stepping. If Stepping, there is nothing to do. Just
                 // clear the dialog and let the user take control. If Running we need to transition
                 // to Stepping.
@@ -858,12 +849,28 @@ public class JobPanel extends JPanel {
                     }
                 }
             }
+            else {
+                if (t instanceof JobProcessorException) {
+                    for (JobProcessorCommand command : ((JobProcessorException) t).getCommands()) {
+                        if (selectedOption.equals(command.getName())) {
+                            try {
+                                command.execute();
+                                jobRun();
+                                break;
+                            }
+                            catch (Exception e) {
+                                // TODO: So much has gone wrong.
+                            }
+                        }
+                    }
+                }
+            }
         });
     }
 
     public void jobSkip() {
         UiUtils.submitUiMachineTask(() -> {
-            jobProcessor.skip();
+//            jobProcessor.skip();
             jobRun();
         });
     }
