@@ -21,6 +21,8 @@ import org.openpnp.machine.reference.ReferenceMachine;
 import org.openpnp.machine.reference.driver.GcodeDriver;
 import org.openpnp.machine.reference.driver.LinuxCNC;
 import org.openpnp.machine.reference.driver.NullDriver;
+import org.openpnp.machine.reference.driver.SimulatorDriver;
+import org.openpnp.machine.reference.driver.DanielPnpDriver;
 import org.openpnp.model.Configuration;
 
 import com.jgoodies.forms.layout.ColumnSpec;
@@ -59,7 +61,8 @@ public class ReferenceMachineConfigurationWizard extends AbstractConfigurationWi
         comboBoxDriver.addItem(GcodeDriver.class.getCanonicalName());
         comboBoxDriver.addItem(LinuxCNC.class.getCanonicalName());
         comboBoxDriver.addItem(OpenBuildsDriver.class.getCanonicalName());
-
+        comboBoxDriver.addItem(DanielPnpDriver.class.getCanonicalName());
+        
         JPanel panelLocations = new JPanel();
         panelLocations.setBorder(new TitledBorder(null, "Locations", TitledBorder.LEADING,
                 TitledBorder.TOP, null, null));
