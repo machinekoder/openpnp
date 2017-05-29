@@ -95,7 +95,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
     	stepsPerMm[X_AXIS] = 160.0;
     	stepsPerMm[Y_AXIS] = -160.0;
     	stepsPerMm[Z_AXIS] = -80.0;
-    	stepsPerMm[C_AXIS] = -160.0 / 18.0;
+    	stepsPerMm[C_AXIS] = -320.0 / 18.0;
     }
     
     private void initializeLimits() {
@@ -103,7 +103,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
     	maximumLimits = new double[5];
     	minimumLimits[X_AXIS] = 0.0;
     	maximumLimits[X_AXIS] = 600.0;
-    	minimumLimits[Y_AXIS] = -686.0;
+    	minimumLimits[Y_AXIS] = -538.0;
     	maximumLimits[Y_AXIS] = 0.0;
     	minimumLimits[Z_AXIS] = -95.0;
     	maximumLimits[Z_AXIS] = 0.0;
