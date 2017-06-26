@@ -103,9 +103,9 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
     	maximumLimits = new double[5];
     	minimumLimits[X_AXIS] = 0.0;
     	maximumLimits[X_AXIS] = 600.0;
-    	minimumLimits[Y_AXIS] = -538.0;
+    	minimumLimits[Y_AXIS] = -685.0;
     	maximumLimits[Y_AXIS] = 0.0;
-    	minimumLimits[Z_AXIS] = -95.0;
+    	minimumLimits[Z_AXIS] = -80.0;
     	maximumLimits[Z_AXIS] = 0.0;
     }
     
@@ -380,40 +380,69 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
     	// Verfahrweg einstellen: s<int>
     	// Absolute Positionierung: p2
 
-    	location = location.subtract(hm.getHeadOffsets());
         location = location.convertToUnits(LengthUnit.Millimeters);
+    	location = location.subtract(hm.getHeadOffsets());
 
         double x = location.getX();
         double y = location.getY();
         double z = location.getZ();
         double c = location.getRotation();
         boolean xMoved = false;
+        boolean xValid = false;
         boolean yMoved = false;
+        boolean yValid = false;
         boolean zMoved = false;
+        boolean zValid = false;
         boolean cMoved = false;
+        boolean cValid = false;
         
         // correct C axis offset
         double xCorrection = (Math.sin(-c / 180.0 * Math.PI) * this.cAxisCorrectionRadius);
         double yCorrection = (Math.cos(-c / 180.0 * Math.PI) * this.cAxisCorrectionRadius);
         x += xCorrection;
         y += yCorrection;
-
-        if (!Double.isNaN(x) && ((x != this.x) || (xCorrection != this.xCorrection)) && checkLimit(X_AXIS, x)) {
+        
+        if (!Double.isNaN(x) && ((x != this.x) || (xCorrection != this.xCorrection))) {
+        	if (checkLimit(X_AXIS, x)) {
+	        	xValid = true;
+        	} else {
+        		throw new Exception("Move would exceed limit on X axis!");
+        	}
+        }
+        if (!Double.isNaN(y) && ((y != this.y) || (yCorrection != this.yCorrection))) {
+        	if (checkLimit(Y_AXIS, y)) {
+	        	yValid = true;
+        	} else {
+        		throw new Exception("Move would exceed limit on Y axis!");
+        	}
+        }
+        if (!Double.isNaN(z) && (z != this.z) && !hm.toString().contains("Camera")) {
+        	if (checkLimit(Z_AXIS, z)) {
+	        	zValid = true;
+        	} else {
+        		throw new Exception("Move would exceed limit on Z axis!");
+        	}
+        }
+        if (!Double.isNaN(c) && c != this.c) {
+        	cValid = true;
+        }
+        
+        if (xValid) {
         	setFeedRate(X_AXIS, speed);
             moveAxisTo(X_AXIS, x);
             xMoved = true;
         }
-        if (!Double.isNaN(y) && ((y != this.y) || (yCorrection != this.yCorrection)) && checkLimit(Y_AXIS, y)) {
+        if (yValid) {
         	setFeedRate(Y_AXIS, speed);
             moveAxisTo(Y_AXIS, y);
             yMoved = true;
         }
-        if (!Double.isNaN(z) && (z != this.z) && checkLimit(Z_AXIS, z) && !hm.toString().contains("Camera")) {
+        if (zValid) {
         	setFeedRate(Z_AXIS, speed);
             moveAxisTo(Z_AXIS, z);
             zMoved = true;
         }
-        if (!Double.isNaN(c) && c != this.c) {
+        if (cValid) {
         	setFeedRate(C_AXIS, speed);
             moveAxisTo(C_AXIS, c);
             cMoved = true;
@@ -435,7 +464,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
         }
         if (cMoved) {
             waitForMoveCompleted(C_AXIS);
-            this.c = readAxisPosition(C_AXIS);
+            this.c = readAxisPosition(C_AXIS) - hm.getHeadOffsets().getRotation();
         }
     }
 
