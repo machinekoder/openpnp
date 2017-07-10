@@ -86,8 +86,8 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
     
     private void initializeStepsPerRevolution() {
     	stepsPerMm = new double[5];
-    	stepsPerMm[X_AXIS] = 160.0;
-    	stepsPerMm[Y_AXIS] = -160.0;
+    	stepsPerMm[X_AXIS] = 160.08; // was 160
+    	stepsPerMm[Y_AXIS] = -160.08; // was 160
     	stepsPerMm[Z_AXIS] = -80.0;
     	stepsPerMm[C_AXIS] = -320.0 / 18.0;
     }
@@ -105,17 +105,17 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
     
     private void initializeFeedRate() {
     	feedMmPerMinute = new double[5];
-    	feedMmPerMinute[X_AXIS] = 20000.0;
-    	feedMmPerMinute[Y_AXIS] = 20000.0;
-    	feedMmPerMinute[Z_AXIS] = 8000.0;
+    	feedMmPerMinute[X_AXIS] = 40000.0;
+    	feedMmPerMinute[Y_AXIS] = 30000.0;
+    	feedMmPerMinute[Z_AXIS] = 80000.0;
     	feedMmPerMinute[C_AXIS] = 100000.0;
     }
     
     private void initializeAcceleration() {
     	accelMmPerSecondSquared = new double[5];
-    	accelMmPerSecondSquared[X_AXIS] = 80000.0;
-    	accelMmPerSecondSquared[Y_AXIS] = 80000.0;
-    	accelMmPerSecondSquared[Z_AXIS] = 32000.0;
+    	accelMmPerSecondSquared[X_AXIS] = 200000.0;
+    	accelMmPerSecondSquared[Y_AXIS] = 160000.0;
+    	accelMmPerSecondSquared[Z_AXIS] = 300000.0;
     	accelMmPerSecondSquared[C_AXIS] = 400000.0;
     }
     
@@ -214,7 +214,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
 		
         // wait for axis to hit the home switch
 		do {
-			Thread.sleep(100);
+			Thread.sleep(10);
 			status = getAxisStatus(axis);
 		} while (!(status.ready && status.zeroPos));
 		
@@ -342,7 +342,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
     	// wait for axis to become ready again
         DriverStatus status = new DriverStatus();
 		do {
-			Thread.sleep(100);
+			Thread.sleep(10);
 			status = getAxisStatus(axis);
 		} while (!status.ready);
     }
