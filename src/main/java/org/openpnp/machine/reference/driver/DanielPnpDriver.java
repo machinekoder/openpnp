@@ -20,7 +20,6 @@
 package org.openpnp.machine.reference.driver;
 
 import java.io.IOException;
-import java.util.Locale;
 import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 
@@ -39,10 +38,6 @@ import org.openpnp.spi.PropertySheetHolder;
 import org.pmw.tinylog.Logger;
 import org.simpleframework.xml.Attribute;
 import org.simpleframework.xml.Element;
-
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.google.gson.JsonSyntaxException;
 
 /**
  * TODO: Consider adding some type of heartbeat to the firmware. TODO: The whole movement wait lock
@@ -76,7 +71,6 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
     private Thread readerThread;
     private boolean disconnectRequested;
     private Object commandLock = new Object();
-    private Object movementWaitLock = new Object();
     private String lastResponse;
     private boolean connected;
     
@@ -487,15 +481,12 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
 
     @Override
     public void actuate(ReferenceActuator actuator, double value) throws Exception {
-        // TODO Auto-generated method stub
-
+        // unused: auto generated function stub
     }
 
     @Override
     public void actuate(ReferenceActuator actuator, boolean on) throws Exception {
-        if (actuator.getIndex() == 0) {
-            sendCommand(on ? "M8" : "M9");
-        }
+    	// unused: auto generated function stub
     }
 
     @Override
