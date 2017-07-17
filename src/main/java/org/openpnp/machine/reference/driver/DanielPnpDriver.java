@@ -96,7 +96,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
         minimumLimits = new double[5];
         maximumLimits = new double[5];
         minimumLimits[X_AXIS] = 0.0;
-        maximumLimits[X_AXIS] = 600.0;
+        maximumLimits[X_AXIS] = 640.0;
         minimumLimits[Y_AXIS] = -685.0;
         maximumLimits[Y_AXIS] = 0.0;
         minimumLimits[Z_AXIS] = -80.0;
