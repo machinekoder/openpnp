@@ -86,8 +86,8 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
 
     private void initializeStepsPerRevolution() {
         stepsPerMm = new double[5];
-        stepsPerMm[X_AXIS] = 160.08; // was 160
-        stepsPerMm[Y_AXIS] = -160.08; // was 160
+        stepsPerMm[X_AXIS] = 160; // was 160 then 160.08
+        stepsPerMm[Y_AXIS] = -160; // was 160
         stepsPerMm[Z_AXIS] = -80.0;
         stepsPerMm[C_AXIS] = -320.0 / 18.0;
     }
