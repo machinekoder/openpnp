@@ -65,6 +65,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
     private double[] feedMmPerMinute;
     private double[] accelMmPerSecondSquared;
     private double cAxisCorrectionRadius = 0;// 0.25;
+    private double cAxisRotationOffset = -360.0;
 
     private double x, y, z, c;
     private double xCorrection, yCorrection;
@@ -181,16 +182,22 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
             throw new Exception("Digitalen Output setzen gescheitert");
         }
     }
-
-    private void initializeAxis(int axis) throws Exception {
-        // Positionsfehler zurücksetzen
+    
+    private void resetPositionError(int axis) throws Exception {
         String command = String.format("%1$dD", axis);
         String response = sendCommand(command);
         Logger.trace(response);
         if (!response.equals(command)) {
             throw new Exception("Positionsfehler zurücksetzen gescheitert");
         }
+    }
 
+    private void initializeAxis(int axis, boolean home) throws Exception {
+        String command;
+        String response;
+        
+        resetPositionError(axis);
+        
         DriverStatus status = getAxisStatus(axis);
         if (!status.ready) {
             throw new Exception(String.format("Axis %1$d not ready", axis));
@@ -210,16 +217,20 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
             throw new Exception("Setzen der Rampe fehlgeschlagen");
         }
 
-        // Motor starten
-        startMotor(axis);
-
-        // wait for axis to hit the home switch
-        do {
-            Thread.sleep(10);
-            status = getAxisStatus(axis);
-        } while (!(status.ready && status.zeroPos));
+        if (home) {
+            // Motor starten
+            startMotor(axis);
+    
+            // wait for axis to hit the home switch
+            do {
+                Thread.sleep(10);
+                status = getAxisStatus(axis);
+            } while (!(status.ready && status.zeroPos));
+        }
 
         setAcceleration(axis);
+        
+        resetPositionError(axis); // reset again to make sure everything works fine
     }
 
     private void setAbsolutePositioning(int axis) throws Exception {
@@ -295,20 +306,24 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
 
     @Override
     public void home(ReferenceHead head) throws Exception {
-        initializeAxis(Z_AXIS);
-        initializeAxis(X_AXIS);
-        initializeAxis(Y_AXIS);
+        initializeAxis(Z_AXIS, true);
+        initializeAxis(X_AXIS, true);
+        initializeAxis(Y_AXIS, true);;
+        initializeAxis(C_AXIS, false);
 
         // Absolute Positionierung
         setAbsolutePositioning(X_AXIS);
         setAbsolutePositioning(Y_AXIS);
         setAbsolutePositioning(Z_AXIS);
         setAbsolutePositioning(C_AXIS);
+        
+        moveAxisTo(C_AXIS, this.cAxisRotationOffset);
+        waitForMoveCompleted(C_AXIS);
 
         this.x = readAxisPosition(X_AXIS);
         this.y = readAxisPosition(Y_AXIS);
         this.z = readAxisPosition(Z_AXIS);
-        this.c = readAxisPosition(C_AXIS);
+        this.c = readAxisPosition(C_AXIS) - this.cAxisRotationOffset;
 
         digitalOutputsBank1.light = true;
         digitalOutputsBank2.light = true;
@@ -445,7 +460,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
         }
         if (cValid) {
             setFeedRate(C_AXIS, speed);
-            moveAxisTo(C_AXIS, c);
+            moveAxisTo(C_AXIS, c + this.cAxisRotationOffset);
             cMoved = true;
         }
 
@@ -465,7 +480,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
         }
         if (cMoved) {
             waitForMoveCompleted(C_AXIS);
-            this.c = readAxisPosition(C_AXIS) - hm.getHeadOffsets()
+            this.c = readAxisPosition(C_AXIS) - this.cAxisRotationOffset - hm.getHeadOffsets()
                                                   .getRotation();
         }
     }
