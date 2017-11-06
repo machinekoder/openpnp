@@ -32,8 +32,10 @@ import org.openpnp.machine.reference.ReferenceHead;
 import org.openpnp.machine.reference.ReferenceHeadMountable;
 import org.openpnp.machine.reference.ReferenceNozzle;
 import org.openpnp.machine.reference.driver.wizards.AbstractSerialPortDriverConfigurationWizard;
+import org.openpnp.model.Configuration;
 import org.openpnp.model.LengthUnit;
 import org.openpnp.model.Location;
+import org.openpnp.model.Part;
 import org.openpnp.spi.PropertySheetHolder;
 import org.pmw.tinylog.Logger;
 import org.simpleframework.xml.Attribute;
@@ -51,8 +53,11 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
     private double feedRateMmPerMinute;
     @Element(required = false)
     private Location homeLocation = new Location(LengthUnit.Millimeters);
-
+    @Element(required = false)
+    protected Location homingFiducialLocation = new Location(LengthUnit.Millimeters);
+    
     private int placeBlowTime = 50;
+    private int pickSuckTime = 300;
 
     private static int X_AXIS = 2;
     private static int Y_AXIS = 1;
@@ -69,6 +74,9 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
 
     private double x, y, z, c;
     private double xCorrection, yCorrection;
+    private double homeOffsetX;
+    private double homeOffsetY;
+    private double homeOffsetZ;
     private Thread readerThread;
     private boolean disconnectRequested;
     private Object commandLock = new Object();
@@ -240,6 +248,14 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
             throw new Exception("aktivieren von absoluter Positionierung gescheitert");
         }
     }
+    
+    private void setBacklashCompensation(int axis, double amount) throws Exception {
+        String command = String.format("%1z%2", axis, amount);
+        String response = sendCommand(command);
+        if (!response.equals(command)) {
+            throw new Exception("aktivieren von absoluter Positionierung gescheitert");
+        }
+    }
 
     private void startMotor(int axis) throws Exception {
 
@@ -320,15 +336,41 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
         moveAxisTo(C_AXIS, this.cAxisRotationOffset);
         waitForMoveCompleted(C_AXIS);
 
-        this.x = readAxisPosition(X_AXIS);
-        this.y = readAxisPosition(Y_AXIS);
-        this.z = readAxisPosition(Z_AXIS);
+        double x = readAxisPosition(X_AXIS);
+        double y = readAxisPosition(Y_AXIS);
+        double z = readAxisPosition(Z_AXIS);
         this.c = readAxisPosition(C_AXIS) - this.cAxisRotationOffset;
+        
+        this.homeOffsetX = this.homeLocation.getLengthX().getValue() - this.x;
+        this.homeOffsetY = this.homeLocation.getLengthY().getValue() - this.y;
+        this.homeOffsetZ = this.homeLocation.getLengthZ().getValue() - this.z;
+        this.x = x + this.homeOffsetX;
+        this.y = y + this.homeOffsetY;
+        this.z = z + this.homeOffsetZ;
 
         digitalOutputsBank1.light = true;
         digitalOutputsBank2.light = true;
         setDigitalOutputs(digitalOutputsBank1);
         setDigitalOutputs(digitalOutputsBank2);
+        
+        /*
+         * The head camera for nozzle-1 should now be (if everything has homed correctly) directly
+         * above the homing pin in the machine bed, use the head camera scan for this and make sure
+         * this is exactly central - otherwise we move the camera until it is, and then reset all
+         * the axis back to 0,0,0,0 as this is calibrated home.
+         */
+        Part homePart = Configuration.get().getPart("FIDUCIAL-HOME");
+        if (homePart != null) {
+            Configuration.get().getMachine().getFiducialLocator()
+                    .getHomeFiducialLocation(homingFiducialLocation, homePart);
+            
+            // homeOffset contains the offset, but we are not really concerned with that,
+            // we just reset X,Y back to the home-coordinate at this point.
+            this.homeOffsetX = this.homeOffsetX - this.x;
+            this.homeOffsetY = this.homeOffsetY - this.y;
+            this.x = this.homeLocation.getLengthX().getValue();
+            this.y = this.homeLocation.getLengthY().getValue();
+        }
     }
 
     private double readAxisPosition(int axis) throws Exception {
@@ -445,17 +487,17 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
 
         if (xValid) {
             setFeedRate(X_AXIS, speed);
-            moveAxisTo(X_AXIS, x);
+            moveAxisTo(X_AXIS, x - homeOffsetX);
             xMoved = true;
         }
         if (yValid) {
             setFeedRate(Y_AXIS, speed);
-            moveAxisTo(Y_AXIS, y);
+            moveAxisTo(Y_AXIS, y - homeOffsetY);
             yMoved = true;
         }
         if (zValid) {
             setFeedRate(Z_AXIS, speed);
-            moveAxisTo(Z_AXIS, z);
+            moveAxisTo(Z_AXIS, z - homeOffsetZ);
             zMoved = true;
         }
         if (cValid) {
@@ -466,17 +508,17 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
 
         if (xMoved) {
             waitForMoveCompleted(X_AXIS);
-            this.x = readAxisPosition(X_AXIS) - xCorrection;
+            this.x = readAxisPosition(X_AXIS) - xCorrection + homeOffsetX;
             this.xCorrection = xCorrection;
         }
         if (yMoved) {
             waitForMoveCompleted(Y_AXIS);
-            this.y = readAxisPosition(Y_AXIS) - yCorrection;
+            this.y = readAxisPosition(Y_AXIS) - yCorrection + homeOffsetY;
             this.yCorrection = yCorrection;
         }
         if (zMoved) {
             waitForMoveCompleted(Z_AXIS);
-            this.z = readAxisPosition(Z_AXIS);
+            this.z = readAxisPosition(Z_AXIS) + homeOffsetZ;
         }
         if (cMoved) {
             waitForMoveCompleted(C_AXIS);
@@ -490,6 +532,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
         digitalOutputsBank2.suck = true;
         digitalOutputsBank2.blow = false;
         setDigitalOutputs(digitalOutputsBank2);
+        Thread.sleep(this.pickSuckTime);
     }
 
     @Override
