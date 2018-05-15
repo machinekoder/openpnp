@@ -410,7 +410,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
                 Math.abs(stepsPerMm[axis]) * (feedMmPerMinute[axis] / 60.0) * scale).intValue();
         String command = String.format("%1$do%2$d", axis, frequency);
         String response = sendCommand(command);
-        Logger.trace(response);
+        //Logger.trace(response);
         if (!response.equals(command)) {
             throw new Exception("Feedrate setzen gescheitert");
         }
@@ -421,7 +421,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
                 Math.abs(stepsPerMm[axis]) * (accelMmPerSecondSquared[axis] / 60.0)).intValue();
         String command = String.format("%1$d:accel%2$d", axis, frequency_per_s);
         String response = sendCommand(command);
-        Logger.trace(response);
+        //Logger.trace(response);
         if (!response.equals(command)) {
             throw new Exception("Acceleration setzen gescheitert");
         }
@@ -592,7 +592,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
         synchronized (commandLock) {
             lastResponse = null;
             if (command != null) {
-                Logger.debug("sendCommand({}, {})", command, timeout);
+                //Logger.debug("sendCommand({}, {})", command, timeout);
                 output.write(command.getBytes());
                 output.write("\r".getBytes());
             }
@@ -625,7 +625,7 @@ public class DanielPnpDriver extends AbstractSerialPortDriver implements Runnabl
                 return;
             }
             line = line.trim();
-            Logger.trace(line);
+            //Logger.trace(line);
             lastResponse = line;
             synchronized (commandLock) {
                 commandLock.notifyAll();
